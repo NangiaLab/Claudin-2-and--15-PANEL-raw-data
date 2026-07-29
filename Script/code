@@ -1,1 +1,124 @@
+#!/usr/bin/env python
 import numpy as np
+import pandas as pd
+import os, sys
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator  # required for the tick locator calls below (missing in original script)
+
+directory = input("What is the directory name? 'c24ht/A-B':")
+path = "/home/.../" + str(directory) + "/conf/"
+path_00 = path
+f_ind = np.loadtxt(path + "/Af_ind.txt")
+
+count = 0
+t = 500  # length of each simulation, in ns
+time = np.arange(11, t, 1)
+lim = int(input('Enter initial separation distance value (ds) in Angstrom units: '))
+
+for x in f_ind:
+    if x < 10:
+        strg = "conf-000" + str(int(x))
+    elif x < 100:
+        strg = "conf-00" + str(int(x))
+    elif x < 1000:
+        strg = "conf-0" + str(int(x))
+    else:
+        strg = "conf-" + str(int(x))
+    file_name_path = (path + strg)
+
+    list_of_files = os.listdir(file_name_path)
+
+    Lfiles = np.array(list_of_files)
+    dfile = np.array("fin.gro")
+    if (Lfiles == dfile).any():
+        count += 1
+        en = (np.loadtxt(file_name_path + '/energy.xvg', skiprows=24, usecols=(1,), unpack=True, ndmin=0))
+        cen = (np.loadtxt(file_name_path + '/Cenergy.xvg', skiprows=24, usecols=(1,), unpack=True, ndmin=0))
+        ang_A = (np.loadtxt(file_name_path + '/init_angle_file.txt', usecols=(0,), unpack=True, ndmin=0))
+        ang_B = (np.loadtxt(file_name_path + '/init_angle_file.txt', usecols=(1,), unpack=True, ndmin=0))
+        dist = pd.read_csv(file_name_path + '/D0.txt', header=None).values
+
+        t1 = np.array(ang_A[time])
+        t2 = np.array(ang_B[time])
+        t3 = np.array(en[time])
+        t4 = np.repeat(x, len(time))
+        t6 = np.array(dist[time])
+        t7 = np.array(cen[time])
+        t8 = t3 + t7
+        if count == 1:
+            T1 = t1
+            T2 = t2
+            T4 = t4
+            T6 = t6
+            T8 = t8
+        else:
+            T1 = np.append(T1, t1)
+            T2 = np.append(T2, t2)
+            T4 = np.append(T4, t4)
+            T6 = np.append(T6, t6)
+            T8 = np.append(T8, t8)
+
+### CHECK SECTION: keep only frames within the separation-distance cutoff ###
+sel_ind = np.argwhere(T6 < lim)
+
+AT1 = T1[sel_ind]
+AT2 = T2[sel_ind]
+AT8 = T8[sel_ind]
+
+theta = np.rad2deg(AT1)
+thetaP = np.rad2deg(AT2)
+
+gs = 1              # grid size (degrees)
+g = int(360 / gs)   # number of grids per axis
+
+grids = np.zeros((g, g))
+
+for l in range(len(theta)):
+    a = int(theta[l])
+    if a == 360:
+        a = 0
+    b = int(thetaP[l])
+    if b == 360:
+        b = 0
+    grids[a, b] += 1
+
+# --- Save the population-per-grid data ---
+np.savetxt(path + '/Cpop_grids.txt', grids)
+
+# --- Plot and save the population-per-grid heatmap ---
+font = {'size': 40, 'weight': 'normal', 'family': 'san-serif'}
+plt.style.use(u'default')
+matplotlib.rc('font', **font)
+matplotlib.rc('axes', linewidth=2)
+
+Tgrid = np.transpose(grids)
+background = np.zeros((360, 360))
+masked_dataG = np.ma.masked_where(Tgrid == 0, Tgrid)
+
+fig, ax = plt.subplots(figsize=(15, 12))
+ax.pcolormesh(background, cmap='Greys')
+cont1 = ax.pcolormesh(masked_dataG, cmap='jet', alpha=1, vmin=0, vmax=60, shading='gouraud')
+
+cbar = plt.colorbar(cont1, ax=ax)
+cbar.ax.tick_params(labelsize=35, length=14, width=4)
+
+ax.xaxis.set_major_locator(MultipleLocator(90))
+ax.xaxis.set_minor_locator(MultipleLocator(10))
+ax.yaxis.set_major_locator(MultipleLocator(90))
+ax.yaxis.set_minor_locator(MultipleLocator(10))
+
+x_positions = range(0, 361, 90)
+ax.set_xticks(x_positions)
+ax.set_yticks(x_positions)
+ax.set_xticklabels([str(i) for i in x_positions], fontsize=35)
+ax.set_yticklabels([str(i) for i in x_positions], fontsize=35)
+
+ax.tick_params(axis='both', which='major', length=20, width=6, labelsize=35)
+ax.tick_params(axis='both', which='minor', length=14, width=4)
+ax.tick_params(axis='y', which='both', left=True, right=True)
+ax.tick_params(axis='y', which='major', labelleft=True, labelright=False)
+
+plt.tight_layout()
+plt.savefig(path + '/CPop_grid.png', transparent=True, bbox_inches='tight', dpi=600)
